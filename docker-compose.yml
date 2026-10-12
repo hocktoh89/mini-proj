@@ -1,0 +1,52 @@
+# Base services shared by every environment.
+#
+#   Dev  (auto-loads docker-compose.override.yml):
+#     docker compose up --build
+#   Prod:
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres_mini_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - mini_pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend_mini_app
+    env_file: .env
+    environment:
+      # .env's DATABASE_URL points at localhost:5431 for host-side tooling;
+      # inside the compose network the app must reach the `postgres` service.
+      DATABASE_URL: ${CONTAINER_DATABASE_URL}
+      PORT: 3006
+    ports:
+      # host:container - HOST_PORT is the port on your machine, 3006 is what the app listens on
+      - '${HOST_PORT:-3006}:3006'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+volumes:
+  mini_pgdata:
+    name: mini_pgdata
+
+networks:
+  app-network:
+    driver: bridge

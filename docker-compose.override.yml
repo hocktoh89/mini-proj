@@ -1,0 +1,21 @@
+# Development overrides - loaded automatically by `docker compose up`.
+# Source is bind-mounted so `nest start --watch` reloads on save; the Prisma client is
+# generated into ./src/generated/prisma and is visible on the host for IDE types.
+
+services:
+  postgres:
+    ports:
+      - '5431:5432' # host tooling (DATABASE_URL in .env) talks to this port
+
+  backend:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      # Keep the container's Linux node_modules, don't use the host's.
+      # (dist/ is not volume-mounted: nest's deleteOutDir can't rmdir a mount point.)
+      - /app/node_modules
+    ports:
+      - '9229:9229' # node inspector for `yarn start:debug`

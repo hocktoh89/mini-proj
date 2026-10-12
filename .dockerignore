@@ -1,0 +1,32 @@
+# Dependencies / build output - always rebuilt inside the image
+node_modules
+dist
+build
+coverage
+.nyc_output
+*.tsbuildinfo
+
+# Prisma client is regenerated inside the image
+src/generated
+
+# Secrets - inject via env at runtime, never bake into the image
+.env
+.env.*
+
+# VCS / editor / OS noise
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+*.log
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Not needed to build or run
+README.md
+skills-lock.json
+.claude

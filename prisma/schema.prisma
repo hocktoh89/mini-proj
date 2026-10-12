@@ -1,0 +1,142 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider        = "prisma-client"
+  previewFeatures = ["driverAdapters"]
+  output          = "../src/generated/prisma"
+  moduleFormat    = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  active
+  inactive
+  locked
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  username      String?
+  email         String         @unique
+  password      String
+  status        UserStatus     @default(active)
+  lastLoginAt   DateTime?      @db.Timestamptz
+  updatedAt     DateTime       @updatedAt @db.Timestamptz
+  userRole      UserRole?
+  createdAt     DateTime       @default(now()) @db.Timestamptz
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+// User Role Access Control Domain (17)
+enum RoleStatus {
+  active
+  inactive
+}
+
+enum PermissionStatus {
+  active
+  inactive
+}
+
+enum PermissionType {
+  menu
+  action
+  api
+  report
+  setting
+}
+
+enum PermissionRiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+model Role {
+  id              BigInt           @id @default(autoincrement())
+  code            String           @unique
+  name            String
+  description     String?
+  level           Int
+  isSystemRole    Boolean          @default(true)
+  status          RoleStatus       @default(active)
+  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id              BigInt              @id @default(autoincrement())
+  code            String              @unique
+  name            String
+  description     String
+  category        String
+  type            PermissionType
+  riskLevel       PermissionRiskLevel
+  isLocked        Boolean             @default(false)
+  status          PermissionStatus    @default(active)
+  createdAt       DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(3)
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+// One active role per user - enforced by the @unique on userId, not just app validation.
+model UserRole {
+  id        BigInt   @id @default(autoincrement())
+  userId    Int      @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    BigInt
+  role      Role     @relation(fields: [roleId], references: [id])
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("userRoles")
+}
+
+model RolePermission {
+  id           BigInt     @id @default(autoincrement())
+  roleId       BigInt
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId BigInt
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(3)
+
+  @@unique([roleId, permissionId])
+  @@map("rolePermissions")
+}
+
+// One row per login session, id is the session's jti (also embedded in both the access and
+// refresh JWT so a request/refresh can be checked against this exact session). Single session
+// per user is enforced at the app layer (RefreshTokenService.createSession revokes any prior
+// active row for the user before inserting a new one), not by a DB constraint - so this is a
+// row-per-session table, not row-per-user. Login/logout/session-invalidation history lives in
+// AuditEvent instead (userLoggedIn/userLoggedOut/userSessionsInvalidated/userSessionRevoked).
+// Expired/revoked rows aren't purged yet - a future scp-worker cleanup job should do this once
+// that process exists (see CLAUDE.md).
+model RefreshToken {
+  id                String    @id @default(uuid())
+  userId            Int
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash         String
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  expiresAt         DateTime  @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  revokedAt         DateTime? @db.Timestamptz(3)
+  replacedByTokenId String?
+
+  @@index([userId])
+  @@map("refreshTokens")
+}

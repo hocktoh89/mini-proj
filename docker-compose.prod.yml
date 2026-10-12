@@ -1,0 +1,33 @@
+# Production overrides:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+services:
+  postgres:
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    image: mini-proj-migrate:latest
+    container_name: migrate_mini_app
+    environment:
+      DATABASE_URL: ${CONTAINER_DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: 'no'
+
+  backend:
+    build:
+      target: production
+    image: mini-proj-backend:latest
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
