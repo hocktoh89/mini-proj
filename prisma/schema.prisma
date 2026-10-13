@@ -242,7 +242,10 @@ model Product {
   sku          String  @unique
   name         String
   price        Decimal @db.Decimal(12, 2)
-  availability Int
+  currency     String  @default("USD") @db.Char(3) // ISO 4217
+  stockQty     Int     @default(0)
+  // In stock (stockQty > 0). Kept in step by every stock write, as in the ERP this came from.
+  availability Boolean @default(false)
   cost         Decimal @db.Decimal(12, 2)
 
   @@map("products")

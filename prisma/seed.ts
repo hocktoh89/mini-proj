@@ -20,6 +20,7 @@ import { buildApiKey } from '../src/auth/api-key';
 const PERMISSIONS = [
   { code: 'catalog.read', name: 'Read catalog', riskLevel: 'low' },
   { code: 'catalog.rows.all', name: 'See every catalog row', riskLevel: 'high' },
+  { code: 'catalog.stock.update', name: 'Deduct product stock', riskLevel: 'medium' },
   { code: 'apiClients.manage', name: 'Manage API clients', riskLevel: 'critical' },
   {
     code: 'roles.manage',
@@ -127,13 +128,13 @@ export async function seed(prisma: PrismaClient) {
     sku: string,
     name: string,
     price: number,
-    availability: number,
+    stockQty: number,
     cost: number,
   ) =>
     prisma.product.upsert({
       where: { sku },
       update: {},
-      create: { sku, name, price, availability, cost },
+      create: { sku, name, price, stockQty, availability: stockQty > 0, cost },
     });
   const chair = await product('SKU-1001', 'Chair', 100, 60, 55);
   const table = await product('SKU-1002', 'Table', 60, 50, 35);
@@ -146,6 +147,8 @@ export async function seed(prisma: PrismaClient) {
     ['sku', true],
     ['name', true],
     ['price', true],
+    ['currency', true],
+    ['stockQty', true],
     ['availability', true],
     ['cost', false],
   ] as const) {
