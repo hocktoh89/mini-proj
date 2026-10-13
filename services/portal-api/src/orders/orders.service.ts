@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toProductView } from '../products/product.view';
-import { ErpCredentials, VendorErpService } from '../vendor-erp/vendor-erp.service';
+import { VendorErpService } from '../vendor-erp/vendor-erp.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 
 @Injectable()
@@ -14,10 +14,10 @@ export class OrdersService {
   // The ERP decides everything here using the caller's login: whether they may order at all
   // (catalog.stock.update), whether they can see the SKU (404 otherwise) and whether there is
   // enough stock (409). The order is only recorded once the stock has been taken.
-  async create(credentials: ErpCredentials, dto: CreateOrderDto) {
+  async create(authorization: string, dto: CreateOrderDto) {
     const sku = dto.sku.trim().toUpperCase();
-    const user = await this.vendorErpService.fetchCurrentUser(credentials);
-    const product = await this.vendorErpService.updateVendorProducts(credentials, {
+    const user = await this.vendorErpService.fetchCurrentUser(authorization);
+    const product = await this.vendorErpService.updateVendorProducts(authorization, {
       sku,
       qty: dto.quantity,
     });

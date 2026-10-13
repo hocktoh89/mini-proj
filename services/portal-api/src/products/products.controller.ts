@@ -1,11 +1,10 @@
 import { Controller, Get, Param, Req } from '@nestjs/common';
-import { ApiBearerAuth, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { credentialsFrom, VendorErpService } from '../vendor-erp/vendor-erp.service';
+import { bearerFrom, VendorErpService } from '../vendor-erp/vendor-erp.service';
 import { toProductView } from './product.view';
 
 @ApiTags('products')
-@ApiSecurity('api-key')
 @ApiBearerAuth()
 @Controller('products')
 export class ProductsController {
@@ -13,7 +12,7 @@ export class ProductsController {
 
   @Get(':sku')
   async findOne(@Req() request: Request, @Param('sku') sku: string) {
-    const product = await this.vendorErpService.fetchVendorProducts(credentialsFrom(request), sku);
+    const product = await this.vendorErpService.fetchVendorProducts(bearerFrom(request), sku);
     return toProductView(product);
   }
 }

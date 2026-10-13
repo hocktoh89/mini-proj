@@ -7,24 +7,13 @@ import {
 import axios, { AxiosInstance, isAxiosError } from 'axios';
 import type { Request } from 'express';
 
-// The caller's ERP login, passed through untouched. The portal holds no credentials of its own,
-// so the ERP's role permissions, hierarchy (row) and field (column) rules apply to every call.
-export interface ErpCredentials {
-  authorization?: string;
-  apiKey?: string;
-  cookie?: string;
-}
-
-export function credentialsFrom(request: Request): ErpCredentials {
-  const header = (name: string) => {
-    const value = request.headers[name];
-    return typeof value === 'string' && value ? value : undefined;
-  };
-  return {
-    authorization: header('authorization'),
-    apiKey: header('x-api-key'),
-    cookie: header('cookie'),
-  };
+// The caller's ERP login (`Authorization: Bearer <token>` from POST /auth/login on the ERP), passed
+// through untouched. The token says who the user is; the ERP loads their role, hierarchy nodes,
+// overrides and field rules from its DB, so every call here sees exactly what that user may see.
+export function bearerFrom(request: Request): string {
+  const authorization = request.headers.authorization;
+  if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException();
+  return authorization;
 }
 
 // Fields are only present when the caller may see them (the ERP leaves hidden columns out).
@@ -52,40 +41,26 @@ export class VendorErpService {
     timeout: 5_000,
   });
 
-  fetchVendorProducts = (credentials: ErpCredentials, sku: string) =>
+  fetchVendorProducts = (authorization: string, sku: string) =>
     this.call<ErpProduct>(() =>
       this.http.get(`/products/sku/${encodeURIComponent(sku)}`, {
-        headers: this.headers(credentials),
+        headers: { authorization },
       }),
     );
 
   // Atomic in the ERP: fails with 409 instead of overselling, so no separate availability check.
   // `stockQuantity` is the amount to deduct, not the new stock level.
-  updateVendorProducts = (
-    credentials: ErpCredentials,
-    { sku, qty }: { sku: string; qty: number },
-  ) =>
+  updateVendorProducts = (authorization: string, { sku, qty }: { sku: string; qty: number }) =>
     this.call<ErpProduct>(() =>
       this.http.patch(
         `/products/${encodeURIComponent(sku)}/stock`,
         { stockQuantity: qty },
-        { headers: this.headers(credentials) },
+        { headers: { authorization } },
       ),
     );
 
-  fetchCurrentUser = (credentials: ErpCredentials) =>
-    this.call<ErpUser>(() => this.http.get('/auth/me', { headers: this.headers(credentials) }));
-
-  private headers(credentials: ErpCredentials) {
-    if (!credentials.authorization && !credentials.apiKey && !credentials.cookie) {
-      throw new UnauthorizedException();
-    }
-    const headers: Record<string, string> = {};
-    if (credentials.authorization) headers.authorization = credentials.authorization;
-    if (credentials.apiKey) headers['x-api-key'] = credentials.apiKey;
-    if (credentials.cookie) headers.cookie = credentials.cookie;
-    return headers;
-  }
+  fetchCurrentUser = (authorization: string) =>
+    this.call<ErpUser>(() => this.http.get('/auth/me', { headers: { authorization } }));
 
   private async call<T>(send: () => Promise<{ data: T }>): Promise<T> {
     try {

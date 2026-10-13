@@ -10,13 +10,12 @@ async function bootstrap() {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
 
-  // Same auth schemes as the ERP: whatever the caller logs in with is passed through to it.
+  // Callers log in on the ERP and send its access token here; it is passed through to the ERP.
   const config = new DocumentBuilder()
     .setTitle('Portal API')
     .setDescription('Product availability and ordering, backed by the ERP')
     .setVersion('1.0')
     .addBearerAuth()
-    .addApiKey({ type: 'apiKey', in: 'header', name: 'x-api-key' }, 'api-key')
     .build();
   SwaggerModule.setup('api', app, SwaggerModule.createDocument(app, config));
 

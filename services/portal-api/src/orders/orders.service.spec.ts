@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from './orders.service';
 
 describe('OrdersService', () => {
-  const credentials = { authorization: 'Bearer token' };
+  const authorization = 'Bearer token';
   let service: OrdersService;
   let erp: { fetchCurrentUser: jest.Mock; updateVendorProducts: jest.Mock };
   let prisma: { order: { create: jest.Mock } };
@@ -30,11 +30,14 @@ describe('OrdersService', () => {
     service = module.get(OrdersService);
   });
 
-  it('deducts ERP stock with the caller credentials and records the order for that user', async () => {
-    const result = await service.create(credentials, { sku: ' sku-1001 ', quantity: 2 });
+  it('deducts ERP stock with the caller token and records the order for that user', async () => {
+    const result = await service.create(authorization, { sku: ' sku-1001 ', quantity: 2 });
 
-    expect(erp.fetchCurrentUser).toHaveBeenCalledWith(credentials);
-    expect(erp.updateVendorProducts).toHaveBeenCalledWith(credentials, { sku: 'SKU-1001', qty: 2 });
+    expect(erp.fetchCurrentUser).toHaveBeenCalledWith(authorization);
+    expect(erp.updateVendorProducts).toHaveBeenCalledWith(authorization, {
+      sku: 'SKU-1001',
+      qty: 2,
+    });
     expect(prisma.order.create).toHaveBeenCalledWith({
       data: { sku: 'SKU-1001', quantity: 2, userId: 7 },
     });
@@ -47,7 +50,7 @@ describe('OrdersService', () => {
   it('records nothing when the ERP rejects the quantity', async () => {
     erp.updateVendorProducts.mockRejectedValue(new ConflictException('exceeds stock'));
 
-    await expect(service.create(credentials, { sku: 'SKU-1001', quantity: 99 })).rejects.toThrow(
+    await expect(service.create(authorization, { sku: 'SKU-1001', quantity: 99 })).rejects.toThrow(
       ConflictException,
     );
     expect(prisma.order.create).not.toHaveBeenCalled();
