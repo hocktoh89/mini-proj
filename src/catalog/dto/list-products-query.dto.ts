@@ -1,0 +1,22 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional, Max, Min } from 'class-validator';
+
+// No sort/filter by arbitrary fields on purpose: ordering or filtering by a hidden column
+// (e.g. cost) would leak its values even though the column itself is never returned.
+export class ListProductsQueryDto {
+  @ApiPropertyOptional({ default: 50, minimum: 1, maximum: 200 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  take = 50;
+
+  @ApiPropertyOptional({ default: 0, minimum: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  skip = 0;
+}

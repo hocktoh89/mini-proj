@@ -32,6 +32,14 @@ model User {
   createdAt     DateTime       @default(now()) @db.Timestamptz
   refreshTokens RefreshToken[]
 
+  // Hierarchy access (catalog visibility). organizationId is null for staff users outside any tree.
+  organizationId Int?
+  organization   Organization?       @relation(fields: [organizationId], references: [id])
+  hierarchyNodes UserHierarchyNode[]
+  overrides      UserOverride[]
+  apiClient      ApiClient?
+
+  @@index([organizationId])
   @@map("users")
 }
 
@@ -62,17 +70,18 @@ enum PermissionRiskLevel {
 }
 
 model Role {
-  id              BigInt           @id @default(autoincrement())
-  code            String           @unique
-  name            String
-  description     String?
-  level           Int
-  isSystemRole    Boolean          @default(true)
-  status          RoleStatus       @default(active)
-  createdAt       DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime         @updatedAt @db.Timestamptz(3)
-  userRoles       UserRole[]
-  rolePermissions RolePermission[]
+  id               BigInt            @id @default(autoincrement())
+  code             String            @unique
+  name             String
+  description      String?
+  level            Int
+  isSystemRole     Boolean           @default(true)
+  status           RoleStatus        @default(active)
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @db.Timestamptz(3)
+  userRoles        UserRole[]
+  rolePermissions  RolePermission[]
+  fieldPermissions FieldPermission[]
 
   @@map("roles")
 }
@@ -139,4 +148,177 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refreshTokens")
+}
+
+// Third-party API access. Each client is backed by a service-account User, so the client's role,
+// hierarchy nodes and overrides are the same rows a human user would have. The raw key is shown
+// once at creation; only its prefix (for lookup) and SHA-256 hash are stored.
+enum ApiClientStatus {
+  active
+  suspended
+  revoked
+}
+
+model ApiClient {
+  id         Int             @id @default(autoincrement())
+  name       String
+  userId     Int             @unique
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyPrefix  String          @unique
+  keyHash    String
+  status     ApiClientStatus @default(active)
+  // Empty = any IP.
+  allowedIps String[]        @default([])
+  expiresAt  DateTime?       @db.Timestamptz(3)
+  lastUsedAt DateTime?       @db.Timestamptz(3)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@map("apiClients")
+}
+
+// Catalog access hierarchy (see requirementSchema/). Levels and nodes are rows, so each
+// organization defines its own depth. Extra rules Prisma can't express (level_no >= 1, node level =
+// parent level + 1, NULL-safe field rule uniqueness) live in the access_hierarchy migration.
+
+enum OverrideEffect {
+  ALLOW
+  DENY
+}
+
+model Organization {
+  id     Int              @id @default(autoincrement())
+  name   String           @unique
+  users  User[]
+  levels HierarchyLevel[]
+
+  @@map("organizations")
+}
+
+model HierarchyLevel {
+  id               Int               @id @default(autoincrement())
+  organizationId   Int
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  levelNo          Int // 1 = top
+  name             String // Division, Country, Brand, ...
+  nodes            HierarchyNode[]
+  fieldPermissions FieldPermission[]
+
+  @@unique([organizationId, levelNo])
+  @@unique([organizationId, name])
+  @@map("hierarchyLevels")
+}
+
+model HierarchyNode {
+  id       Int                 @id @default(autoincrement())
+  levelId  Int
+  level    HierarchyLevel      @relation(fields: [levelId], references: [id])
+  parentId Int? // null = top node
+  parent   HierarchyNode?      @relation("NodeTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children HierarchyNode[]     @relation("NodeTree")
+  name     String
+  users    UserHierarchyNode[]
+  tags     ResourceNodeTag[]
+  blocks   NodeBlock[]
+
+  @@index([levelId])
+  @@index([parentId])
+  @@map("hierarchyNodes")
+}
+
+model UserHierarchyNode {
+  userId Int
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodeId Int
+  node   HierarchyNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, nodeId])
+  @@index([nodeId])
+  @@map("userHierarchyNodes")
+}
+
+model Product {
+  id           Int     @id @default(autoincrement())
+  sku          String  @unique
+  name         String
+  price        Decimal @db.Decimal(12, 2)
+  availability Int
+  cost         Decimal @db.Decimal(12, 2)
+
+  @@map("products")
+}
+
+// resourceType + resourceId point at any secured thing ('product', ...). resourceId has no FK
+// because it is polymorphic.
+
+// "This item is made available at this node" - visible to the node, its ancestors and descendants.
+model ResourceNodeTag {
+  id           Int           @id @default(autoincrement())
+  resourceType String
+  resourceId   Int
+  nodeId       Int
+  node         HierarchyNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceType, resourceId, nodeId])
+  @@index([nodeId])
+  @@index([resourceType, resourceId])
+  @@map("resourceNodeTags")
+}
+
+// "This item cannot be seen through this node" - cuts any tag path that passes through it.
+model NodeBlock {
+  id           Int           @id @default(autoincrement())
+  resourceType String
+  resourceId   Int
+  nodeId       Int
+  node         HierarchyNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  reason       String?
+
+  @@unique([resourceType, resourceId, nodeId])
+  @@index([nodeId])
+  @@map("nodeBlocks")
+}
+
+// Per-user exceptions; beat the hierarchy, and DENY beats ALLOW.
+model UserOverride {
+  id           Int            @id @default(autoincrement())
+  userId       Int
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resourceType String
+  resourceId   Int
+  effect       OverrideEffect
+  reason       String?
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+  expiresAt    DateTime?      @db.Timestamptz(3)
+
+  // One effect per user + item, so the two can never conflict.
+  @@unique([userId, resourceType, resourceId])
+  @@map("userOverrides")
+}
+
+// Column-level access. fieldName must match the resource model's field name.
+model FieldDefinition {
+  id             Int               @id @default(autoincrement())
+  resourceType   String
+  fieldName      String
+  defaultVisible Boolean           @default(false) // fail-closed
+  permissions    FieldPermission[]
+
+  @@unique([resourceType, fieldName])
+  @@map("fieldDefinitions")
+}
+
+// Targets a role and/or a level (at least one; both = must match both). allowed = false is a DENY.
+model FieldPermission {
+  id      Int             @id @default(autoincrement())
+  fieldId Int
+  field   FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  roleId  BigInt?
+  role    Role?           @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  levelId Int?
+  level   HierarchyLevel? @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  allowed Boolean
+
+  @@index([fieldId])
+  @@map("fieldPermissions")
 }

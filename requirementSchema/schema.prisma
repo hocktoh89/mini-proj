@@ -1,0 +1,210 @@
+// Access-control hierarchy: configurable levels/nodes, tagging, parent blocks,
+// user overrides and field (column) permissions. PostgreSQL + Prisma.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OverrideEffect {
+  ALLOW
+  DENY
+}
+
+// ───────────── Organization, users, roles ─────────────
+
+model Organization {
+  id      Int              @id @default(autoincrement())
+  name    String           @unique
+  users   User[]
+  levels  HierarchyLevel[]
+
+  @@map("organization")
+}
+
+model User {
+  id             Int           @id @default(autoincrement())
+  organizationId Int           @map("organization_id")
+  name           String
+  email          String?       @unique
+
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  roles        UserRole[]
+  nodes        UserHierarchyNode[]
+  overrides    UserOverride[]
+
+  @@index([organizationId])
+  @@map("app_user")
+}
+
+model Role {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  // true = sees every row (Admin); user DENY overrides still apply
+  seesAllRows Boolean @default(false) @map("sees_all_rows")
+
+  users             UserRole[]
+  fieldPermissions  FieldPermission[]
+
+  @@map("role")
+}
+
+model UserRole {
+  userId Int @map("user_id")
+  roleId Int @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_role")
+}
+
+// ───────────── 1. User-defined hierarchy (rows, not columns) ─────────────
+
+model HierarchyLevel {
+  id             Int    @id @default(autoincrement())
+  organizationId Int    @map("organization_id")
+  levelNo        Int    @map("level_no")   // 1 = top
+  name           String                     // Division, Country, Brand, ...
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  nodes            HierarchyNode[]
+  fieldPermissions FieldPermission[]
+
+  @@unique([organizationId, levelNo])
+  @@unique([organizationId, name])
+  @@map("hierarchy_level")
+}
+
+model HierarchyNode {
+  id       Int     @id @default(autoincrement())
+  levelId  Int     @map("level_id")
+  parentId Int?    @map("parent_id")        // NULL = top node
+  name     String
+
+  level    HierarchyLevel  @relation(fields: [levelId], references: [id])
+  parent   HierarchyNode?  @relation("NodeTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children HierarchyNode[] @relation("NodeTree")
+
+  users    UserHierarchyNode[]
+  tags     ResourceNodeTag[]
+  blocks   NodeBlock[]
+
+  @@index([levelId])
+  @@index([parentId])
+  @@map("hierarchy_node")
+}
+
+// A user can be assigned to many nodes (multiple rows)
+model UserHierarchyNode {
+  userId Int @map("user_id")
+  nodeId Int @map("node_id")
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  node HierarchyNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, nodeId])
+  @@index([nodeId])
+  @@map("user_hierarchy_node")
+}
+
+// ───────────── 2. Products (example resource) ─────────────
+
+model Product {
+  id           Int     @id @default(autoincrement())
+  sku          String  @unique
+  name         String
+  price        Decimal @db.Decimal(12, 2)
+  availability Int
+  cost         Decimal @db.Decimal(12, 2)
+
+  @@map("product")
+}
+
+// ───────────── 3. Generic tagging and parent control ─────────────
+// resource_type + resource_id point at any secured thing ('product', 'order',
+// 'delivery'). resource_id has no foreign key because it is polymorphic.
+
+// "This item is made available at this node"
+model ResourceNodeTag {
+  id           Int    @id @default(autoincrement())
+  resourceType String @map("resource_type")
+  resourceId   Int    @map("resource_id")
+  nodeId       Int    @map("node_id")
+
+  node HierarchyNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceType, resourceId, nodeId])
+  @@index([nodeId])
+  @@index([resourceType, resourceId])
+  @@map("resource_node_tag")
+}
+
+// "Parent says: this node and everything below cannot see this item"
+model NodeBlock {
+  id           Int    @id @default(autoincrement())
+  resourceType String @map("resource_type")
+  resourceId   Int    @map("resource_id")
+  nodeId       Int    @map("node_id")
+  reason       String?
+
+  node HierarchyNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceType, resourceId, nodeId])
+  @@index([nodeId])
+  @@map("node_block")
+}
+
+// ───────────── 4. Per-user overrides (beat the hierarchy; DENY beats ALLOW) ─────────────
+
+model UserOverride {
+  id           Int            @id @default(autoincrement())
+  userId       Int            @map("user_id")
+  resourceType String         @map("resource_type")
+  resourceId   Int            @map("resource_id")
+  effect       OverrideEffect
+  reason       String?
+  createdAt    DateTime       @default(now()) @map("created_at")
+  expiresAt    DateTime?      @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // one effect per user + item, so the two can never conflict
+  @@unique([userId, resourceType, resourceId])
+  @@map("user_override")
+}
+
+// ───────────── 5. Column-level access ─────────────
+
+model FieldDefinition {
+  id             Int     @id @default(autoincrement())
+  resourceType   String  @map("resource_type")
+  fieldName      String  @map("field_name")
+  defaultVisible Boolean @default(false) @map("default_visible") // fail-closed
+
+  permissions FieldPermission[]
+
+  @@unique([resourceType, fieldName])
+  @@map("field_definition")
+}
+
+// Set roleId and/or levelId (at least one). allowed = false is a DENY.
+model FieldPermission {
+  id      Int     @id @default(autoincrement())
+  fieldId Int     @map("field_id")
+  roleId  Int?    @map("role_id")
+  levelId Int?    @map("level_id")
+  allowed Boolean
+
+  field FieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  role  Role?           @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  level HierarchyLevel? @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@index([fieldId])
+  @@map("field_permission")
+}
