@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthUser, CurrentUser, RequirePermissions } from '../auth/auth.decorators';
 import { CATALOG_READ, CATALOG_STOCK_UPDATE } from './catalog.permissions';
 import { BatchProductsDto } from './dto/batch-products.dto';
@@ -10,7 +10,6 @@ import { ProductsService } from './products.service';
 // Which rows and columns come back depends on the caller's hierarchy nodes, overrides and field
 // rules (see AccessScopeService); this guard only decides whether the endpoint is callable at all.
 @ApiTags('catalog')
-@ApiSecurity('api-key')
 @ApiBearerAuth()
 @RequirePermissions(CATALOG_READ)
 @Controller('products')

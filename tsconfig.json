@@ -23,5 +23,7 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "types": ["jest", "node"]
-  }
+  },
+  // services/* are separate apps with their own tsconfig.
+  "exclude": ["node_modules", "dist", "services"]
 }

@@ -37,7 +37,6 @@ model User {
   organization   Organization?       @relation(fields: [organizationId], references: [id])
   hierarchyNodes UserHierarchyNode[]
   overrides      UserOverride[]
-  apiClient      ApiClient?
 
   @@index([organizationId])
   @@map("users")
@@ -148,33 +147,6 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refreshTokens")
-}
-
-// Third-party API access. Each client is backed by a service-account User, so the client's role,
-// hierarchy nodes and overrides are the same rows a human user would have. The raw key is shown
-// once at creation; only its prefix (for lookup) and SHA-256 hash are stored.
-enum ApiClientStatus {
-  active
-  suspended
-  revoked
-}
-
-model ApiClient {
-  id         Int             @id @default(autoincrement())
-  name       String
-  userId     Int             @unique
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  keyPrefix  String          @unique
-  keyHash    String
-  status     ApiClientStatus @default(active)
-  // Empty = any IP.
-  allowedIps String[]        @default([])
-  expiresAt  DateTime?       @db.Timestamptz(3)
-  lastUsedAt DateTime?       @db.Timestamptz(3)
-  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime        @updatedAt @db.Timestamptz(3)
-
-  @@map("apiClients")
 }
 
 // Catalog access hierarchy (see requirementSchema/). Levels and nodes are rows, so each

@@ -7,11 +7,8 @@ export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 export const PERMISSIONS_KEY = 'permissions';
 export const RequirePermissions = (...codes: string[]) => SetMetadata(PERMISSIONS_KEY, codes);
 
-// Set on the request by AuthGuard. `id` is always a User id: API clients act as their
-// service-account user, so permission and hierarchy checks treat both kinds the same.
-export type AuthUser =
-  | { kind: 'session'; id: number; sessionId: string }
-  | { kind: 'apiClient'; id: number; clientId: number };
+// Set on the request by AuthGuard from the access token: the User id and its login session.
+export type AuthUser = { id: number; sessionId: string };
 
 export type AuthenticatedRequest = Request & { user: AuthUser };
 

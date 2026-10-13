@@ -21,7 +21,6 @@ async function bootstrap() {
     .setDescription('API documentation for the Backend')
     .setVersion('1.0')
     .addBearerAuth()
-    .addApiKey({ type: 'apiKey', in: 'header', name: 'x-api-key' }, 'api-key')
     .addCookieAuth(process.env.REFRESH_TOKEN_COOKIE_NAME ?? 'refresh_token')
     .build();
   const document = SwaggerModule.createDocument(app, config);

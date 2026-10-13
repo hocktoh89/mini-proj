@@ -34,7 +34,6 @@ const userSelect = {
   username: true,
   status: true,
   organizationId: true,
-  apiClient: { select: { id: true } },
   userRole: { select: { role: { select: { code: true, name: true } } } },
 } satisfies Prisma.UserSelect;
 
@@ -256,10 +255,6 @@ function toRoleView({ rolePermissions, _count, ...role }: RoleRow) {
   };
 }
 
-function toUserView({
-  apiClient,
-  userRole,
-  ...user
-}: Prisma.UserGetPayload<{ select: typeof userSelect }>) {
-  return { ...user, isApiClient: apiClient !== null, role: userRole?.role ?? null };
+function toUserView({ userRole, ...user }: Prisma.UserGetPayload<{ select: typeof userSelect }>) {
+  return { ...user, role: userRole?.role ?? null };
 }

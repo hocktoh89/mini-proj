@@ -1,14 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Post,
-  Req,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiCookieAuth, ApiTags } from '@nestjs/swagger';
 import { CookieOptions, Request, Response } from 'express';
@@ -61,7 +51,6 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@CurrentUser() user: AuthUser, @Res({ passthrough: true }) res: Response) {
-    if (user.kind !== 'session') throw new BadRequestException('API keys have no session');
     await this.authService.logout(user.sessionId);
     this.clearAuthCookies(res);
   }

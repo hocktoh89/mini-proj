@@ -75,10 +75,10 @@ describe('VendorErpService', () => {
     const body = { statusCode: 409, message: 'exceeds stock', error: 'Conflict' };
     http.patch.mockRejectedValue(errorWith(409, body));
 
-    const error = await service
+    const error: unknown = await service
       .updateVendorProducts(authorization, { sku: 'SKU-1001', qty: 5 })
-      .catch((e: HttpException) => e);
-    expect(error).toBeInstanceOf(HttpException);
+      .catch((e: unknown) => e);
+    if (!(error instanceof HttpException)) throw new Error('expected an HttpException');
     expect(error.getStatus()).toBe(409);
     expect(error.getResponse()).toEqual(body);
   });

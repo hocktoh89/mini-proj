@@ -12,16 +12,13 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
 import { config } from 'dotenv';
-import { createHash } from 'crypto';
 import path from 'path';
 import { OverrideEffect, PrismaClient } from '../src/generated/prisma/client';
-import { buildApiKey } from '../src/auth/api-key';
 
 const PERMISSIONS = [
   { code: 'catalog.read', name: 'Read catalog', riskLevel: 'low' },
   { code: 'catalog.rows.all', name: 'See every catalog row', riskLevel: 'high' },
   { code: 'catalog.stock.update', name: 'Deduct product stock', riskLevel: 'medium' },
-  { code: 'apiClients.manage', name: 'Manage API clients', riskLevel: 'critical' },
   {
     code: 'roles.manage',
     name: 'Manage roles and their permissions',
@@ -193,7 +190,7 @@ export async function seed(prisma: PrismaClient) {
   await fieldRule(fields.cost, roles.CATALOG_ADMIN, null);
   await fieldRule(fields.cost, null, country.id);
 
-  // Human admin who manages API clients through /api-clients
+  // Super admin
   const adminPassword = await bcrypt.hash(SEED_ADMIN.password, 12);
   const admin = await prisma.user.upsert({
     where: { email: SEED_ADMIN.email },
@@ -207,10 +204,10 @@ export async function seed(prisma: PrismaClient) {
   });
 
   // The spreadsheet's users. They log in like the admin (<name>@clients.invalid, same demo password)
-  // to get a Bearer token, and also have a stable API key as third-party API clients.
+  // and call the API with the Bearer token.
   const demoPassword = await bcrypt.hash(SEED_ADMIN.password, 12);
-  const apiKeys: Record<string, string> = {};
-  const client = async (
+  const demoUsers: string[] = [];
+  const demoUser = async (
     name: string,
     roleCode: string,
     nodeIds: number[],
@@ -248,22 +245,15 @@ export async function seed(prisma: PrismaClient) {
         create: { userId: user.id, resourceType: 'product', resourceId, effect },
       });
     }
-    const digest = createHash('sha256').update(`seed-api-key:${name}`).digest();
-    const key = buildApiKey(digest.subarray(0, 6).toString('hex'), digest.toString('base64url'));
-    await prisma.apiClient.upsert({
-      where: { userId: user.id },
-      update: { keyPrefix: key.prefix, keyHash: key.hash, status: 'active' },
-      create: { name, userId: user.id, keyPrefix: key.prefix, keyHash: key.hash },
-    });
-    apiKeys[name] = key.key;
+    demoUsers.push(email);
   };
-  await client('Alan', 'CATALOG_ADMIN', []);
-  await client('John', 'CATALOG_STAFF', [johnsTerritory.id], [[table.id, 'DENY']]);
-  await client('Ben', 'CATALOG_STAFF', [bensTerritory.id], [[table.id, 'ALLOW']]);
-  await client('Aisha', 'CATALOG_STAFF', [malaysia.id, singapore.id]);
+  await demoUser('Alan', 'CATALOG_ADMIN', []);
+  await demoUser('John', 'CATALOG_STAFF', [johnsTerritory.id], [[table.id, 'DENY']]);
+  await demoUser('Ben', 'CATALOG_STAFF', [bensTerritory.id], [[table.id, 'ALLOW']]);
+  await demoUser('Aisha', 'CATALOG_STAFF', [malaysia.id, singapore.id]);
 
   return {
-    apiKeys,
+    demoUsers,
     nodes: { furniture, malaysia, singapore, johnsTerritory, bensTerritory },
     organizations: { aeon },
   };
@@ -275,12 +265,9 @@ if (require.main === module) {
     adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
   });
   seed(prisma)
-    .then(({ apiKeys }) => {
+    .then(({ demoUsers }) => {
       console.log(`Seeded. Admin login: ${SEED_ADMIN.email} / ${SEED_ADMIN.password}`);
-      const users = Object.keys(apiKeys).map((name) => `${name.toLowerCase()}@clients.invalid`);
-      console.log(`Demo logins (same password): ${users.join(', ')}`);
-      console.log('API keys (send as the x-api-key header):');
-      for (const [name, key] of Object.entries(apiKeys)) console.log(`  ${name.padEnd(6)} ${key}`);
+      console.log(`Demo logins (same password): ${demoUsers.join(', ')}`);
     })
     .catch((e) => {
       console.error(e);
