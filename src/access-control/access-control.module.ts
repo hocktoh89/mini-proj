@@ -6,5 +6,6 @@ import { UserRolesController } from './user-roles.controller';
 @Module({
   controllers: [RolesController, UserRolesController],
   providers: [AccessControlService],
+  exports: [AccessControlService],
 })
 export class AccessControlModule {}

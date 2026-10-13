@@ -6,6 +6,7 @@ import { AccessControlModule } from './access-control/access-control.module';
 import { ApiClientsModule } from './api-clients/api-clients.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { HierarchyModule } from './hierarchy/hierarchy.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module';
     CatalogModule,
     ApiClientsModule,
     AccessControlModule,
+    HierarchyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

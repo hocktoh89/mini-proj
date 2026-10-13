@@ -165,9 +165,10 @@ export class AccessControlService {
   }
 
   // The target must exist, must not be the actor, and its current role must be within the actor's
-  // permissions (otherwise a lower admin could demote a more senior one).
-  private async assertMayChangeUser(actorId: number, userId: number) {
-    if (userId === actorId) throw new ForbiddenException('You cannot change your own role');
+  // permissions (otherwise a lower admin could demote a more senior one). Also used by the
+  // hierarchy module before changing where a user is placed.
+  async assertMayChangeUser(actorId: number, userId: number) {
+    if (userId === actorId) throw new ForbiddenException('You cannot change your own access');
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {

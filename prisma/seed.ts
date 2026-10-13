@@ -33,6 +33,18 @@ const PERMISSIONS = [
     riskLevel: 'critical',
     category: 'accessControl',
   },
+  {
+    code: 'hierarchy.manage',
+    name: 'Manage organizations, levels and nodes',
+    riskLevel: 'high',
+    category: 'accessControl',
+  },
+  {
+    code: 'userHierarchy.assign',
+    name: 'Place users in organizations and nodes',
+    riskLevel: 'high',
+    category: 'accessControl',
+  },
 ] as const;
 
 const ROLES = [
