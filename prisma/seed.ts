@@ -21,6 +21,18 @@ const PERMISSIONS = [
   { code: 'catalog.read', name: 'Read catalog', riskLevel: 'low' },
   { code: 'catalog.rows.all', name: 'See every catalog row', riskLevel: 'high' },
   { code: 'apiClients.manage', name: 'Manage API clients', riskLevel: 'critical' },
+  {
+    code: 'roles.manage',
+    name: 'Manage roles and their permissions',
+    riskLevel: 'critical',
+    category: 'accessControl',
+  },
+  {
+    code: 'userRoles.assign',
+    name: 'Assign roles to users',
+    riskLevel: 'critical',
+    category: 'accessControl',
+  },
 ] as const;
 
 const ROLES = [
@@ -47,7 +59,7 @@ export async function seed(prisma: PrismaClient) {
     await prisma.permission.upsert({
       where: { code: p.code },
       update: {},
-      create: { ...p, description: p.name, category: 'catalog', type: 'api' },
+      create: { category: 'catalog', ...p, description: p.name, type: 'api' },
     });
   }
   const roles: Record<string, bigint> = {};
