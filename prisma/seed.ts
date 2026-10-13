@@ -12,7 +12,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
 import { config } from 'dotenv';
-import { createHash, randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 import path from 'path';
 import { OverrideEffect, PrismaClient } from '../src/generated/prisma/client';
 import { buildApiKey } from '../src/auth/api-key';
@@ -206,9 +206,9 @@ export async function seed(prisma: PrismaClient) {
     create: { userId: admin.id, roleId: roles.SUPER_ADMIN },
   });
 
-  // The spreadsheet's users, each as a third-party API client with a stable key. Their password is
-  // random and discarded, so they can only authenticate with the API key.
-  const unusablePassword = async () => bcrypt.hash(randomBytes(32).toString('hex'), 12);
+  // The spreadsheet's users. They log in like the admin (<name>@clients.invalid, same demo password)
+  // to get a Bearer token, and also have a stable API key as third-party API clients.
+  const demoPassword = await bcrypt.hash(SEED_ADMIN.password, 12);
   const apiKeys: Record<string, string> = {};
   const client = async (
     name: string,
@@ -219,11 +219,11 @@ export async function seed(prisma: PrismaClient) {
     const email = `${name.toLowerCase()}@clients.invalid`;
     const user = await prisma.user.upsert({
       where: { email },
-      update: { password: await unusablePassword() },
+      update: { password: demoPassword },
       create: {
         email,
         username: name,
-        password: await unusablePassword(),
+        password: demoPassword,
         organizationId: aeon.id,
       },
     });
@@ -277,6 +277,8 @@ if (require.main === module) {
   seed(prisma)
     .then(({ apiKeys }) => {
       console.log(`Seeded. Admin login: ${SEED_ADMIN.email} / ${SEED_ADMIN.password}`);
+      const users = Object.keys(apiKeys).map((name) => `${name.toLowerCase()}@clients.invalid`);
+      console.log(`Demo logins (same password): ${users.join(', ')}`);
       console.log('API keys (send as the x-api-key header):');
       for (const [name, key] of Object.entries(apiKeys)) console.log(`  ${name.padEnd(6)} ${key}`);
     })
