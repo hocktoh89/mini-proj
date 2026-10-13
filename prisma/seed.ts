@@ -59,9 +59,14 @@ const ROLES = [
     code: 'CATALOG_ADMIN',
     name: 'Catalog admin',
     level: 2,
-    permissions: ['catalog.read', 'catalog.rows.all'],
+    permissions: ['catalog.read', 'catalog.rows.all', 'catalog.stock.update'],
   },
-  { code: 'CATALOG_STAFF', name: 'Catalog staff', level: 3, permissions: ['catalog.read'] },
+  {
+    code: 'CATALOG_STAFF',
+    name: 'Catalog staff',
+    level: 3,
+    permissions: ['catalog.read', 'catalog.stock.update'],
+  },
 ];
 
 export const SEED_ADMIN = { email: 'admin@example.com', password: 'ChangeMe123!' };

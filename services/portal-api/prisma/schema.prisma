@@ -1,0 +1,22 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Products and stock live in the ERP; this table only records orders placed through the portal.
+model Order {
+  id        Int      @id @default(autoincrement())
+  sku       String
+  quantity  Int
+  // ERP user id of whoever placed the order (session user or API client's service account).
+  userId    Int
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("orders")
+}

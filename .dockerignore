@@ -28,5 +28,6 @@ docker-compose*.yml
 
 # Not needed to build or run
 README.md
+services
 skills-lock.json
 .claude

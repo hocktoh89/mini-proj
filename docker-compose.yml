@@ -43,6 +43,27 @@ services:
     networks:
       - app-network
 
+  # Customer portal API (services/portal-api): GET /products/:sku and POST /orders. It holds no
+  # credentials of its own - each request's login is forwarded to `backend`, which applies that
+  # user's permissions, rows and fields. Orders are stored in the `portal` schema of the same DB.
+  portal-api:
+    build:
+      context: ./services/portal-api
+    container_name: portal_api_mini_app
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?schema=portal
+      ERP_BASE_URL: http://backend:3006
+      PORT: 3010
+    ports:
+      - '${PORTAL_HOST_PORT:-3010}:3010'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - app-network
+
 volumes:
   mini_pgdata:
     name: mini_pgdata
