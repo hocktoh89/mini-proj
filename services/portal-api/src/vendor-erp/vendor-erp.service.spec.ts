@@ -49,6 +49,16 @@ describe('VendorErpService', () => {
     });
   });
 
+  it('builds the availability endpoint from the sku and qty', async () => {
+    http.get.mockResolvedValue({ data: { id: 1, stockQty: 10 } });
+
+    await service.checkProductsQtyAvailability(authorization, { sku: 'SKU-1001', qty: 3 });
+
+    expect(http.get).toHaveBeenCalledWith('/products/availability/SKU-1001/qty/3', {
+      headers: { authorization },
+    });
+  });
+
   it('patches the ERP stock using stockQuantity in the request body', async () => {
     http.patch.mockResolvedValue({ data: { id: 1, stockQty: 7 } });
 

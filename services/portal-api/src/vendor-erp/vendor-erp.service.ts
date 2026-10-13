@@ -48,8 +48,19 @@ export class VendorErpService {
       }),
     );
 
-  // Atomic in the ERP: fails with 409 instead of overselling, so no separate availability check.
-  // `stockQuantity` is the amount to deduct, not the new stock level.
+  // 409 when fewer than `qty` are in stock. Read-only, so it is safe to call for every item first.
+  checkProductsQtyAvailability = (
+    authorization: string,
+    { sku, qty }: { sku: string; qty: number },
+  ) =>
+    this.call<ErpProduct>(() =>
+      this.http.get(`/products/availability/${encodeURIComponent(sku)}/qty/${qty}`, {
+        headers: { authorization },
+      }),
+    );
+
+  // `stockQuantity` is the amount to deduct, not the new stock level. Atomic in the ERP: a 409
+  // instead of overselling, even if stock changed after the availability check.
   updateVendorProducts = (authorization: string, { sku, qty }: { sku: string; qty: number }) =>
     this.call<ErpProduct>(() =>
       this.http.patch(

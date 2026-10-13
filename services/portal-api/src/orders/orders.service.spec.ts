@@ -1,25 +1,32 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { VendorErpService } from '../vendor-erp/vendor-erp.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { VendorErpService } from '../vendor-erp/vendor-erp.service';
 import { OrdersService } from './orders.service';
 
 describe('OrdersService', () => {
   const authorization = 'Bearer token';
   let service: OrdersService;
-  let erp: { fetchCurrentUser: jest.Mock; updateVendorProducts: jest.Mock };
+  let erp: {
+    fetchCurrentUser: jest.Mock;
+    checkProductsQtyAvailability: jest.Mock;
+    updateVendorProducts: jest.Mock;
+  };
   let prisma: { order: { create: jest.Mock } };
 
   beforeEach(async () => {
     erp = {
       fetchCurrentUser: jest.fn().mockResolvedValue({ id: 7, email: 'john@example.com' }),
+      checkProductsQtyAvailability: jest.fn().mockResolvedValue({ id: 1, stockQty: 10 }),
       updateVendorProducts: jest
         .fn()
-        .mockResolvedValue({ id: 1, sku: 'SKU-1001', stockQty: 8, availability: true }),
+        .mockImplementation((_auth: string, { sku }: { sku: string }) => ({
+          id: 1,
+          sku,
+          stockQty: 5,
+        })),
     };
-    prisma = {
-      order: { create: jest.fn().mockImplementation(({ data }) => ({ id: 42, ...data })) },
-    };
+    prisma = { order: { create: jest.fn().mockResolvedValue({ id: 42 }) } };
     const module = await Test.createTestingModule({
       providers: [
         OrdersService,
@@ -30,29 +37,72 @@ describe('OrdersService', () => {
     service = module.get(OrdersService);
   });
 
-  it('deducts ERP stock with the caller token and records the order for that user', async () => {
-    const result = await service.create(authorization, { sku: ' sku-1001 ', quantity: 2 });
+  it('checks then deducts every item with the caller token and records one order', async () => {
+    const result = await service.create(authorization, {
+      items: [
+        { sku: 'SKU-1001', qty: 2 },
+        { sku: 'SKU-1002', qty: 1 },
+      ],
+    });
 
     expect(erp.fetchCurrentUser).toHaveBeenCalledWith(authorization);
-    expect(erp.updateVendorProducts).toHaveBeenCalledWith(authorization, {
-      sku: 'SKU-1001',
-      qty: 2,
-    });
+    for (const call of [erp.checkProductsQtyAvailability, erp.updateVendorProducts]) {
+      expect(call).toHaveBeenCalledWith(authorization, { sku: 'SKU-1001', qty: 2 });
+      expect(call).toHaveBeenCalledWith(authorization, { sku: 'SKU-1002', qty: 1 });
+    }
     expect(prisma.order.create).toHaveBeenCalledWith({
-      data: { sku: 'SKU-1001', quantity: 2, userId: 7 },
+      data: {
+        userId: 7,
+        orderItems: {
+          create: [
+            { productSku: 'SKU-1001', quantity: 2 },
+            { productSku: 'SKU-1002', quantity: 1 },
+          ],
+        },
+      },
+      include: { orderItems: true },
     });
     expect(result).toEqual({
-      order: { id: 42, sku: 'SKU-1001', quantity: 2, userId: 7 },
-      product: { id: 1, sku: 'SKU-1001', stockQuantity: 8, availability: true },
+      order: { id: 42 },
+      products: [
+        { id: 1, sku: 'SKU-1001', stockQuantity: 5 },
+        { id: 1, sku: 'SKU-1002', stockQuantity: 5 },
+      ],
     });
   });
 
-  it('records nothing when the ERP rejects the quantity', async () => {
-    erp.updateVendorProducts.mockRejectedValue(new ConflictException('exceeds stock'));
+  it('merges repeated SKUs so availability is checked for the total quantity', async () => {
+    await service.create(authorization, {
+      items: [
+        { sku: 'sku-1001', qty: 2 },
+        { sku: ' SKU-1001 ', qty: 3 },
+      ],
+    });
 
-    await expect(service.create(authorization, { sku: 'SKU-1001', quantity: 99 })).rejects.toThrow(
-      ConflictException,
-    );
+    expect(erp.checkProductsQtyAvailability).toHaveBeenCalledTimes(1);
+    expect(erp.checkProductsQtyAvailability).toHaveBeenCalledWith(authorization, {
+      sku: 'SKU-1001',
+      qty: 5,
+    });
+  });
+
+  it.each([
+    ['over stock', new ConflictException('not available')],
+    ['hidden or unknown SKU', new NotFoundException()],
+  ])('deducts nothing and records nothing when one item fails the check (%s)', async (_, error) => {
+    erp.checkProductsQtyAvailability
+      .mockResolvedValueOnce({ id: 1, stockQty: 10 })
+      .mockRejectedValueOnce(error);
+
+    await expect(
+      service.create(authorization, {
+        items: [
+          { sku: 'SKU-1001', qty: 1 },
+          { sku: 'SKU-1002', qty: 99 },
+        ],
+      }),
+    ).rejects.toBe(error);
+    expect(erp.updateVendorProducts).not.toHaveBeenCalled();
     expect(prisma.order.create).not.toHaveBeenCalled();
   });
 });

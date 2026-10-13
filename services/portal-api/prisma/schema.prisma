@@ -8,15 +8,25 @@ datasource db {
   provider = "postgresql"
 }
 
-// Products and stock live in the ERP; this table only records orders placed through the portal.
+// Products and stock live in the ERP; these tables only record orders placed through the portal.
 model Order {
-  id        Int      @id @default(autoincrement())
-  sku       String
-  quantity  Int
-  // ERP user id of whoever placed the order (session user or API client's service account).
-  userId    Int
-  createdAt DateTime @default(now())
+  id         Int         @id @default(autoincrement())
+  // ERP user id of whoever placed the order.
+  userId     Int
+  createdAt  DateTime    @default(now())
+  orderItems OrderItem[]
 
   @@index([userId])
   @@map("orders")
+}
+
+model OrderItem {
+  id         Int    @id @default(autoincrement())
+  orderId    Int
+  order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productSku String
+  quantity   Int
+
+  @@index([orderId])
+  @@map("order_items")
 }
